@@ -1,0 +1,15 @@
+{
+  "companyName": "Northline Motors",
+  "website": "https://example.com",
+  "email": "hello@example.com",
+  "address": "United Kingdom",
+  "phoneDisplay": "",
+  "phoneLink": "",
+  "whatsappLink": "",
+  "mapsLink": "",
+  "logoPath": "",
+  "faviconPath": "/favicon.svg",
+  "instagram": "",
+  "facebook": "",
+  "allowIndexing": false
+}

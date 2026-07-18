@@ -1,0 +1,78 @@
+name: Deploy preview to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Detect Cloudflare configuration
+        id: cloudflare
+        shell: bash
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare deployment skipped because repository secrets are not configured." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check out repository
+        if: steps.cloudflare.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.cloudflare.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        if: steps.cloudflare.outputs.enabled == 'true'
+        run: npm install --no-audit --no-fund
+
+      - name: Build Vite website
+        if: steps.cloudflare.outputs.enabled == 'true'
+        run: npm run build
+
+      - name: Resolve Cloudflare project name
+        if: steps.cloudflare.outputs.enabled == 'true'
+        id: project
+        shell: bash
+        run: |
+          RAW_NAME="${GITHUB_REPOSITORY#*/}"
+          PROJECT_NAME="$(printf '%s' "$RAW_NAME" | tr '[:upper:]_' '[:lower:]-' | sed 's/[^a-z0-9-]//g' | cut -c1-58 | sed 's/-*$//')"
+          if [ -z "$PROJECT_NAME" ]; then
+            echo "Could not derive a valid Cloudflare Pages project name." >&2
+            exit 1
+          fi
+          echo "name=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+          echo "Cloudflare project: $PROJECT_NAME"
+
+      - name: Create Pages project when missing
+        if: steps.cloudflare.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          npx --yes wrangler@4 pages project create "${{ steps.project.outputs.name }}" --production-branch main || true
+
+      - name: Deploy production build
+        if: steps.cloudflare.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          npx --yes wrangler@4 pages deploy dist --project-name="${{ steps.project.outputs.name }}" --branch=main
+          echo "Preview URL: https://${{ steps.project.outputs.name }}.pages.dev" >> "$GITHUB_STEP_SUMMARY"
