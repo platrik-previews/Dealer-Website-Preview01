@@ -1,4 +1,6 @@
-import lead from './lead.json';
+import defaultLead from './lead.json';
+
+const lead = globalThis.__PLATRIK_LEAD__ || defaultLead;
 
 /**
  * MAIN CLIENT CONFIGURATION
@@ -16,7 +18,9 @@ const website = text(lead.website);
 const email = text(lead.email);
 const address = text(lead.address, 'United Kingdom');
 const phoneDisplay = text(lead.phoneDisplay, 'Contact dealership');
-const fallbackContactLink = website || (email ? `mailto:${email}` : '/#contact');
+const previewBasePath = globalThis.__PLATRIK_PREVIEW_BASE__ || '';
+const localContactLink = previewBasePath ? `${previewBasePath}/#contact` : '/#contact';
+const fallbackContactLink = website || (email ? `mailto:${email}` : localContactLink);
 const phoneLink = text(
   lead.phoneLink,
   lead.phoneDisplay ? `tel:${String(lead.phoneDisplay).replace(/[^\d+]/g, '')}` : fallbackContactLink,
