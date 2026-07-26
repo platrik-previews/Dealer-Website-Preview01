@@ -1,8 +1,9 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { business } from '../config/business';
-import { navigate, usePathname } from '../hooks/usePathname';
+import { navigate, toPublicPath, usePathname } from '../hooks/usePathname';
 
 export const SmartLink = forwardRef(function SmartLink({ href, className, children, onClick, ...props }, ref) {
+  const publicHref = toPublicPath(href);
   const handleClick = (event) => {
     onClick?.(event);
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -15,7 +16,7 @@ export const SmartLink = forwardRef(function SmartLink({ href, className, childr
     }
   };
 
-  return <a ref={ref} href={href} className={className} onClick={handleClick} {...props}>{children}</a>;
+  return <a ref={ref} href={publicHref} className={className} onClick={handleClick} {...props}>{children}</a>;
 });
 
 export function Mark({ compact = false }) {
