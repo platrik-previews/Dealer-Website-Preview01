@@ -1,0 +1,46 @@
+name: Import validated resin build
+
+on:
+  push:
+    branches: [phase-2-resin-renderer]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ARTIFACT_URL: "https://sdmntprindiasocentral.oaiusercontent.com/files/00000000-fa4c-8211-885d-20b845e74bef/raw?se=2026-07-27T22:25:54Z&sp=r&sv=2026-02-06&sr=b&scid=c096b0d6-8bfc-552b-a95c-110254d596e5&skoid=3cb6de21-012a-49c9-9402-a1ebf8d0bd06&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-27T19:31:08Z&ske=2026-07-29T19:31:08Z&sks=b&skv=2026-02-06&sig=bzvcw1SltnjWhEpNX8qY1XSaIa46d/5CSVHofRSyzUc%3D"
+    steps:
+      - name: Check out renderer branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase-2-resin-renderer
+          fetch-depth: 0
+
+      - name: Download validated build
+        run: curl --fail --location --silent --show-error "$ARTIFACT_URL" --output /tmp/resin-dist.zip
+
+      - name: Install resin build
+        run: |
+          rm -rf public/resin
+          mkdir -p public/resin
+          unzip -q /tmp/resin-dist.zip -d public/resin
+          test -f public/resin/index.html
+          test -n "$(find public/resin/assets -name '*.js' -print -quit)"
+          grep -q 'noindex, nofollow, noarchive' public/resin/index.html
+
+      - name: Commit resin build
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/resin
+          if git diff --cached --quiet; then
+            echo "Validated resin build is already installed"
+            exit 0
+          fi
+          git commit -m "Install JSON-driven resin renderer"
+          git push origin HEAD:phase-2-resin-renderer
