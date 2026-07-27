@@ -1,0 +1,53 @@
+name: Verify live resin route
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify production route and assets
+        run: |
+          node --input-type=module <<'NODE'
+          const base = 'https://platrik-preview-hub.vercel.app';
+          const slug = 'stoneflow-resin';
+          const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          let rootHtml = '';
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            const response = await fetch(`${base}/${slug}`, { redirect: 'follow' });
+            rootHtml = await response.text();
+            if (response.ok) break;
+            if (attempt === 12) throw new Error(`Root route returned HTTP ${response.status}.`);
+            await pause(10000);
+          }
+          if (!rootHtml.includes('noindex, nofollow, noarchive')) throw new Error('Root route is missing noindex.');
+          const rootScript = rootHtml.match(/<script[^>]+src="([^"]+\.js)"/)?.[1];
+          if (!rootScript) throw new Error('Root application script was not found.');
+          const rootJsResponse = await fetch(new URL(rootScript, base));
+          const rootJs = await rootJsResponse.text();
+          if (!rootJsResponse.ok || !rootJs.includes('/resin/index.html?slug=')) throw new Error('Root resin dispatcher is not live.');
+
+          const dataResponse = await fetch(`https://raw.githubusercontent.com/platrik-previews/dealer-preview-data/main/leads/${slug}.json`, { cache: 'no-store' });
+          const data = await dataResponse.json();
+          if (!dataResponse.ok || data.renderer !== 'resin_driveway' || data.companyName !== 'StoneFlow Resin') throw new Error('Runtime resin JSON is invalid.');
+
+          const resinResponse = await fetch(`${base}/resin/index.html?slug=${slug}`);
+          const resinHtml = await resinResponse.text();
+          if (!resinResponse.ok || !resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('Embedded resin renderer is unavailable or indexable.');
+          const resinScript = resinHtml.match(/<script[^>]+src="([^"]+\.js)"/)?.[1];
+          const resinStyle = resinHtml.match(/<link[^>]+href="([^"]+\.css)"/)?.[1];
+          if (!resinScript || !resinStyle) throw new Error('Resin assets were not referenced.');
+          const [scriptResponse, styleResponse] = await Promise.all([
+            fetch(new URL(resinScript, base)),
+            fetch(new URL(resinStyle, base)),
+          ]);
+          const resinJs = await scriptResponse.text();
+          if (!scriptResponse.ok || !styleResponse.ok || !resinJs.includes('Runtime configuration returned HTTP')) throw new Error('Resin runtime assets did not load.');
+          console.log(`Verified ${base}/${slug}`);
+          NODE
