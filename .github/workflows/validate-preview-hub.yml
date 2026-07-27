@@ -1,0 +1,45 @@
+name: Validate Preview Hub
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Preview Hub
+        run: npm run build
+
+      - name: Validate dealership and resin renderers
+        run: |
+          node --input-type=module <<'NODE'
+          import { existsSync, readFileSync, readdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          if (!existsSync('dist/index.html')) throw new Error('Preview Hub index is missing.');
+          if (!existsSync('dist/resin/index.html')) throw new Error('Resin renderer index is missing.');
+          const resinHtml = readFileSync('dist/resin/index.html', 'utf8');
+          if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('Resin renderer is missing noindex.');
+          const hubScripts = readdirSync('dist/assets').filter((name) => name.endsWith('.js')).map((name) => readFileSync(join('dist/assets', name), 'utf8')).join('\n');
+          if (!hubScripts.includes('/resin/index.html?slug=')) throw new Error('Root resin route dispatcher is missing.');
+          const resinScripts = readdirSync('dist/resin/assets').filter((name) => name.endsWith('.js')).map((name) => readFileSync(join('dist/resin/assets', name), 'utf8')).join('\n');
+          if (!resinScripts.includes('Runtime configuration returned HTTP')) throw new Error('Resin runtime JSON loader is missing.');
+          console.log('Validated dealership shell, root resin routing, runtime JSON and noindex.');
+          NODE
