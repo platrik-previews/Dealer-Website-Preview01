@@ -1,0 +1,126 @@
+name: Verify top-level Resin hero live
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Verify exact live hero sequence
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const fs = require('node:fs');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({
+              viewport: { width: 1440, height: 900 },
+              reducedMotion: 'no-preference',
+            });
+            const errors = [];
+            page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`console:${msg.text()}`); });
+            page.on('pageerror', (error) => errors.push(`pageerror:${error.message}`));
+
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=top-level-hero', {
+              waitUntil: 'domcontentloaded',
+              timeout: 60000,
+            });
+            await page.waitForSelector('[data-hero]', { state: 'visible', timeout: 30000 });
+            await page.waitForFunction(() => document.documentElement.dataset.runtimePersonalized === 'true', null, { timeout: 30000 });
+            await page.waitForTimeout(500);
+
+            if (page.frames().length !== 1) throw new Error(`Resin is still framed: ${page.frames().length} frames`);
+            if (!page.url().endsWith('/stoneflow-resin/')) throw new Error(`Short public URL was not preserved: ${page.url()}`);
+            if (await page.locator('iframe').count()) throw new Error('Legacy Resin iframe is still present.');
+
+            const state = async () => page.evaluate(() => {
+              const hero = document.querySelector('[data-hero]');
+              const style = getComputedStyle(hero);
+              const nodeState = (selector) => {
+                const node = document.querySelector(selector);
+                if (!node) return null;
+                const computed = getComputedStyle(node);
+                return { opacity: Number(computed.opacity), transform: computed.transform };
+              };
+              return {
+                url: location.href,
+                scrollY,
+                progress: Number(style.getPropertyValue('--hero-progress') || 0),
+                intro: Number(style.getPropertyValue('--hero-intro') || 0),
+                explode: Number(style.getPropertyValue('--hero-explode') || 0),
+                build: Number(style.getPropertyValue('--hero-build') || 0),
+                finish: Number(style.getPropertyValue('--hero-finish') || 0),
+                final: Number(style.getPropertyValue('--hero-final') || 0),
+                classes: hero.className,
+                opening: nodeState('.hero-opening'),
+                scene: nodeState('.hero-scene'),
+                finalPanel: nodeState('.hero-final'),
+                personalized: document.documentElement.dataset.runtimePersonalized,
+                brand: document.querySelector('.brand-copy strong')?.textContent?.trim() || '',
+              };
+            });
+
+            const start = await state();
+            await page.screenshot({ path: 'hero-start.png' });
+
+            await page.mouse.move(720, 450);
+            await page.mouse.wheel(0, 1700);
+            await page.waitForTimeout(700);
+            const middle = await state();
+            await page.screenshot({ path: 'hero-middle.png' });
+
+            await page.mouse.wheel(0, 1600);
+            await page.waitForTimeout(700);
+            const end = await state();
+            await page.screenshot({ path: 'hero-end.png' });
+
+            if (start.progress > 0.05 || start.intro < 0.9) throw new Error(`Opening state is incorrect: ${JSON.stringify(start)}`);
+            if (middle.progress < 0.35 || middle.explode <= 0.3 || middle.build <= 0.05 || middle.scene?.opacity <= 0.15) {
+              throw new Error(`Layer-build animation did not advance: ${JSON.stringify(middle)}`);
+            }
+            if (end.progress < 0.75 || end.finish <= 0.4 || end.final <= 0.05) {
+              throw new Error(`Hero final sequence did not advance: ${JSON.stringify(end)}`);
+            }
+            if (start.brand !== 'StoneFlow' || start.personalized !== 'true') throw new Error('Runtime JSON personalization failed.');
+            if (errors.length) throw new Error(`Browser errors: ${errors.join(' | ')}`);
+
+            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=top-level-hero', {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            });
+            if (!dealership || dealership.status() !== 200) throw new Error('Broad Town Cars regression check failed.');
+            if (!(await page.locator('body').innerText()).includes('Broad Town Cars')) throw new Error('Broad Town Cars content is missing.');
+
+            const report = { start, middle, end, errors };
+            fs.writeFileSync('hero-live-report.json', JSON.stringify(report, null, 2));
+            console.log(JSON.stringify(report));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Upload hero evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: top-level-resin-hero-live
+          path: |
+            hero-live-report.json
+            hero-start.png
+            hero-middle.png
+            hero-end.png
+          retention-days: 1
