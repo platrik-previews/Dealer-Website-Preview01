@@ -18,7 +18,7 @@ style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, c
 document.head.appendChild(style);
 
 const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin']);
-const RESIN_BUILD_ID = 'static-original-20260728';
+const RESIN_BUILD_ID = 'static-original-top-level-20260728';
 
 function getPreviewRoute(pathname) {
   const firstSegment = pathname.split('/').filter(Boolean)[0] || '';
@@ -70,18 +70,14 @@ async function loadPreviewConfig() {
   return { slug, lead };
 }
 
-function renderResinPreview(slug, lead) {
-  document.title = `${lead.companyName} | Resin Driveway Preview`;
-  document.documentElement.style.height = '100%';
-  document.body.style.cssText = 'margin:0;height:100%;overflow:hidden;background:#0d100d';
-  const root = document.getElementById('root');
-  root.style.height = '100%';
-  root.innerHTML = `<iframe
-    title="${escapeHtml(lead.companyName)} resin driveway website preview"
-    src="/resin/index.html?slug=${encodeURIComponent(slug)}&build=${RESIN_BUILD_ID}"
-    style="display:block;width:100%;height:100%;border:0;background:#0d100d"
-    referrerpolicy="strict-origin-when-cross-origin"
-  ></iframe>`;
+function renderResinPreview(slug) {
+  const publicRoute = `/${encodeURIComponent(slug)}/`;
+  const params = new URLSearchParams({
+    slug,
+    route: publicRoute,
+    build: RESIN_BUILD_ID,
+  });
+  window.location.replace(`/resin/index.html?${params.toString()}`);
 }
 
 async function bootstrap() {
@@ -90,7 +86,7 @@ async function bootstrap() {
     const loaded = await loadPreviewConfig();
     slug = loaded.slug;
     if (loaded.lead?.renderer === 'resin_driveway') {
-      renderResinPreview(loaded.slug, loaded.lead);
+      renderResinPreview(loaded.slug);
       return;
     }
 
