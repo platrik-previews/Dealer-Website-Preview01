@@ -12,6 +12,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Capture live source files
+        run: |
+          set -u
+          curl -L --fail --silent --show-error 'https://resin-driveaway.pages.dev/?source=1' -o cloudflare-live.html || true
+          curl -L --fail --silent --show-error 'https://platrik-preview-hub.vercel.app/resin/index.html?source=1' -o preview-hub-resin.html || true
+          python - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          for prefix, file, base in [
+            ('cloudflare', 'cloudflare-live.html', 'https://resin-driveaway.pages.dev/'),
+            ('hub', 'preview-hub-resin.html', 'https://platrik-preview-hub.vercel.app/resin/'),
+          ]:
+            path = Path(file)
+            if not path.exists():
+              continue
+            html = path.read_text(errors='replace')
+            for kind, pattern in [('css', r'href=["\']([^"\']+\.css[^"\']*)'), ('js', r'src=["\']([^"\']+\.js[^"\']*)')]:
+              matches = re.findall(pattern, html)
+              for index, value in enumerate(matches):
+                if value.startswith('http'):
+                  url = value
+                elif value.startswith('/'):
+                  from urllib.parse import urljoin
+                  url = urljoin(base, value)
+                else:
+                  from urllib.parse import urljoin
+                  url = urljoin(base, value)
+                subprocess.run(['curl','-L','--fail','--silent','--show-error',url,'-o',f'{prefix}-{kind}-{index}.txt'], check=False)
+          PY
+
       - name: Install Playwright Chromium
         run: |
           npm install --no-save playwright@1.55.0
@@ -23,106 +53,120 @@ jobs:
           const { chromium } = require('playwright');
           const fs = require('node:fs');
 
+          const report = { cloud: {}, hub: {}, errors: [] };
           const positions = [0, 0.15, 0.32, 0.52, 0.72, 0.9];
 
-          async function heroSnapshot(frame, ratio) {
-            return frame.evaluate(async (ratio) => {
-              const hero = document.querySelector('[data-hero]');
-              if (!hero) throw new Error('Hero element missing');
-              const scrollable = Math.max(1, hero.offsetHeight - window.innerHeight);
-              window.scrollTo(0, Math.round(scrollable * ratio));
-              await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-              const scene = document.querySelector('.hero-scene');
-              const opening = document.querySelector('.hero-opening');
-              const rig = document.querySelector('.driveway-rig');
-              const final = document.querySelector('.hero-final');
-              const rootStyle = getComputedStyle(hero);
-              const styleOf = (node) => node ? getComputedStyle(node) : null;
-              return {
-                ratio,
-                scrollY: window.scrollY,
-                heroHeight: hero.offsetHeight,
-                viewportHeight: window.innerHeight,
-                progress: rootStyle.getPropertyValue('--hero-progress').trim(),
-                intro: rootStyle.getPropertyValue('--hero-intro').trim(),
-                explode: rootStyle.getPropertyValue('--hero-explode').trim(),
-                build: rootStyle.getPropertyValue('--hero-build').trim(),
-                finish: rootStyle.getPropertyValue('--hero-finish').trim(),
-                final: rootStyle.getPropertyValue('--hero-final').trim(),
-                openingOpacity: styleOf(opening)?.opacity,
-                sceneOpacity: styleOf(scene)?.opacity,
-                sceneTransform: styleOf(scene)?.transform,
-                rigTransform: styleOf(rig)?.transform,
-                finalOpacity: styleOf(final)?.opacity,
-                classes: hero.className,
-              };
-            }, ratio);
+          async function inspectFrame(frame, label) {
+            const base = await frame.evaluate(() => ({
+              url: location.href,
+              title: document.title,
+              readyState: document.readyState,
+              bodyText: document.body?.innerText?.slice(0, 500) || '',
+              bodyHeight: document.body?.scrollHeight || 0,
+              viewportHeight: innerHeight,
+              heroExists: Boolean(document.querySelector('[data-hero]')),
+              reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+              scriptSources: [...document.scripts].map((s) => s.src || 'inline'),
+              styleSources: [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.href),
+            }));
+            const snapshots = [];
+            if (base.heroExists) {
+              for (const ratio of positions) {
+                snapshots.push(await frame.evaluate(async (ratio) => {
+                  const hero = document.querySelector('[data-hero]');
+                  const scrollable = Math.max(1, hero.offsetHeight - innerHeight);
+                  scrollTo(0, Math.round(scrollable * ratio));
+                  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                  const heroStyle = getComputedStyle(hero);
+                  const pick = (selector) => {
+                    const node = document.querySelector(selector);
+                    if (!node) return null;
+                    const style = getComputedStyle(node);
+                    return { opacity: style.opacity, transform: style.transform, visibility: style.visibility, display: style.display };
+                  };
+                  return {
+                    ratio,
+                    scrollY,
+                    progress: heroStyle.getPropertyValue('--hero-progress').trim(),
+                    intro: heroStyle.getPropertyValue('--hero-intro').trim(),
+                    explode: heroStyle.getPropertyValue('--hero-explode').trim(),
+                    build: heroStyle.getPropertyValue('--hero-build').trim(),
+                    finish: heroStyle.getPropertyValue('--hero-finish').trim(),
+                    final: heroStyle.getPropertyValue('--hero-final').trim(),
+                    classes: hero.className,
+                    opening: pick('.hero-opening'),
+                    scene: pick('.hero-scene'),
+                    rig: pick('.driveway-rig'),
+                    finalPanel: pick('.hero-final'),
+                  };
+                }, ratio));
+              }
+            }
+            report[label] = { ...base, snapshots };
           }
 
           (async () => {
             const browser = await chromium.launch({ headless: true });
-            const context = await browser.newContext({
-              viewport: { width: 1440, height: 900 },
-              reducedMotion: 'no-preference',
-            });
-
+            const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'no-preference' });
             const cloud = await context.newPage();
             const hub = await context.newPage();
-            const errors = { cloud: [], hub: [] };
-            cloud.on('console', (msg) => { if (msg.type() === 'error') errors.cloud.push(msg.text()); });
-            hub.on('console', (msg) => { if (msg.type() === 'error') errors.hub.push(msg.text()); });
-            cloud.on('pageerror', (err) => errors.cloud.push(err.message));
-            hub.on('pageerror', (err) => errors.hub.push(err.message));
-
-            await cloud.goto('https://resin-driveaway.pages.dev/?hero-parity=1', { waitUntil: 'networkidle', timeout: 60000 });
-            await hub.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?hero-parity=1', { waitUntil: 'networkidle', timeout: 60000 });
-
-            const cloudFrame = cloud.mainFrame();
-            const hubFrame = hub.frames().find((frame) => frame.url().includes('/resin/index.html'));
-            if (!hubFrame) throw new Error('Preview Hub Resin iframe missing');
-
-            await cloudFrame.waitForSelector('[data-hero]', { state: 'visible', timeout: 30000 });
-            await hubFrame.waitForSelector('[data-hero]', { state: 'visible', timeout: 30000 });
-
-            const cloudResults = [];
-            const hubResults = [];
-            for (const position of positions) {
-              cloudResults.push(await heroSnapshot(cloudFrame, position));
-              hubResults.push(await heroSnapshot(hubFrame, position));
+            for (const [label, page] of [['cloud', cloud], ['hub', hub]]) {
+              page.on('console', (msg) => { if (msg.type() === 'error') report.errors.push(`${label}:console:${msg.text()}`); });
+              page.on('pageerror', (error) => report.errors.push(`${label}:pageerror:${error.message}`));
             }
 
-            // Test real mouse wheel delivery over the iframe, which is what the user experiences.
-            await hubFrame.evaluate(() => window.scrollTo(0, 0));
-            const iframe = hub.locator('iframe');
-            const box = await iframe.boundingBox();
-            if (!box) throw new Error('Resin iframe has no visible box');
-            await hub.mouse.move(box.x + box.width / 2, box.y + Math.min(450, box.height / 2));
-            await hub.mouse.wheel(0, 1300);
-            await hub.waitForTimeout(500);
-            const wheelResult = await hubFrame.evaluate(() => ({
-              scrollY: window.scrollY,
-              progress: getComputedStyle(document.querySelector('[data-hero]')).getPropertyValue('--hero-progress').trim(),
-            }));
+            try {
+              await cloud.goto('https://resin-driveaway.pages.dev/?hero-parity=2', { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await cloud.waitForTimeout(3000);
+              await inspectFrame(cloud.mainFrame(), 'cloud');
+              if (report.cloud.heroExists) {
+                await cloud.mainFrame().evaluate(() => {
+                  const hero = document.querySelector('[data-hero]');
+                  scrollTo(0, (hero.offsetHeight - innerHeight) * 0.45);
+                });
+                await cloud.waitForTimeout(200);
+                await cloud.screenshot({ path: 'cloudflare-hero-mid.png' });
+              }
+            } catch (error) {
+              report.errors.push(`cloud:load:${error.message}`);
+            }
 
-            const report = { cloudResults, hubResults, wheelResult, errors };
+            try {
+              await hub.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?hero-parity=2', { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await hub.waitForTimeout(3000);
+              const hubFrame = hub.frames().find((frame) => frame.url().includes('/resin/index.html'));
+              if (!hubFrame) throw new Error('Resin iframe missing');
+              await inspectFrame(hubFrame, 'hub');
+              if (report.hub.heroExists) {
+                await hubFrame.evaluate(() => scrollTo(0, 0));
+                const box = await hub.locator('iframe').boundingBox();
+                if (box) {
+                  await hub.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 450));
+                  await hub.mouse.wheel(0, 1500);
+                  await hub.waitForTimeout(500);
+                  report.hub.wheel = await hubFrame.evaluate(() => ({
+                    scrollY,
+                    progress: getComputedStyle(document.querySelector('[data-hero]')).getPropertyValue('--hero-progress').trim(),
+                  }));
+                }
+                await hubFrame.evaluate(() => {
+                  const hero = document.querySelector('[data-hero]');
+                  scrollTo(0, (hero.offsetHeight - innerHeight) * 0.45);
+                });
+                await hub.waitForTimeout(200);
+                await hub.screenshot({ path: 'preview-hub-hero-mid.png' });
+              }
+            } catch (error) {
+              report.errors.push(`hub:load:${error.message}`);
+            }
+
             fs.writeFileSync('hero-parity-report.json', JSON.stringify(report, null, 2));
-
-            await cloudFrame.evaluate(() => window.scrollTo(0, (document.querySelector('[data-hero]').offsetHeight - innerHeight) * 0.42));
-            await hubFrame.evaluate(() => window.scrollTo(0, (document.querySelector('[data-hero]').offsetHeight - innerHeight) * 0.42));
-            await cloud.waitForTimeout(200);
-            await hub.waitForTimeout(200);
-            await cloud.screenshot({ path: 'cloudflare-hero-mid.png' });
-            await hub.screenshot({ path: 'preview-hub-hero-mid.png' });
-
             console.log(JSON.stringify(report));
-            if (wheelResult.scrollY < 100 || Number(wheelResult.progress || 0) <= 0.01) {
-              throw new Error(`Mouse wheel did not drive iframe hero animation: ${JSON.stringify(wheelResult)}`);
-            }
-
             await browser.close();
           })().catch((error) => {
+            report.errors.push(`fatal:${error.message}`);
+            fs.writeFileSync('hero-parity-report.json', JSON.stringify(report, null, 2));
             console.error(error);
-            process.exit(1);
           });
           NODE
 
@@ -133,6 +177,10 @@ jobs:
           name: resin-hero-parity-evidence
           path: |
             hero-parity-report.json
+            cloudflare-live.html
+            preview-hub-resin.html
+            cloudflare-*.txt
+            hub-*.txt
             cloudflare-hero-mid.png
             preview-hub-hero-mid.png
           retention-days: 1
