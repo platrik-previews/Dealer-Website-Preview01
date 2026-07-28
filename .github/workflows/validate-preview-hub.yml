@@ -37,9 +37,14 @@ jobs:
           if (!existsSync('dist/resin/index.html')) throw new Error('Resin renderer index is missing.');
           const resinHtml = readFileSync('dist/resin/index.html', 'utf8');
           if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('Resin renderer is missing noindex.');
+          if (!resinHtml.includes('index-current-20260728.js')) throw new Error('Resin renderer is not using the current versioned runtime.');
           const hubScripts = readdirSync('dist/assets').filter((name) => name.endsWith('.js')).map((name) => readFileSync(join('dist/assets', name), 'utf8')).join('\n');
           if (!hubScripts.includes('/resin/index.html?slug=')) throw new Error('Root resin route dispatcher is missing.');
+          if (!hubScripts.includes('current-20260728')) throw new Error('Root resin route is missing its cache-busting build ID.');
           const resinScripts = readdirSync('dist/resin/assets').filter((name) => name.endsWith('.js')).map((name) => readFileSync(join('dist/resin/assets', name), 'utf8')).join('\n');
           if (!resinScripts.includes('Runtime configuration returned HTTP')) throw new Error('Resin runtime JSON loader is missing.');
-          console.log('Validated dealership shell, root resin routing, runtime JSON and noindex.');
+          if (!resinScripts.includes('A driveway should feel')) throw new Error('Current Resin hero copy is missing; a stale template was embedded.');
+          if (!resinScripts.includes('Beautiful above.')) throw new Error('Current Resin final hero copy is missing; visual parity failed.');
+          if (resinScripts.includes('Thoughtfully designed')) throw new Error('Legacy Resin hero copy is still embedded.');
+          console.log('Validated dealership behavior, current Resin visual parity, runtime JSON and noindex.');
           NODE
