@@ -56,20 +56,25 @@ jobs:
           if (resinHtml.includes('/resin/assets/index-')) throw new Error('A reconstructed React Resin asset is still referenced.');
 
           const originalScript = readFileSync('dist/resin/script.js', 'utf8');
-          if (!originalScript.includes('[data-hero]')) throw new Error('Original Resin interaction script is incomplete.');
+          for (const marker of ['function updateHero()', '--hero-progress', '--hero-explode', '--hero-build', '--hero-finish', '--hero-final']) {
+            if (!originalScript.includes(marker)) throw new Error(`Original Resin hero animation is incomplete: ${marker}`);
+          }
 
           const runtime = readFileSync('dist/resin/runtime-config.js', 'utf8');
           if (!runtime.includes('dealer-preview-data/main/leads/')) throw new Error('Runtime JSON data source is missing.');
           if (!runtime.includes('config.companyName')) throw new Error('Business-name personalization is missing.');
           if (!runtime.includes('config.logoUrl')) throw new Error('Logo personalization is missing.');
           if (!runtime.includes('original static site remains visible')) throw new Error('Fail-open rendering protection is missing.');
+          if (!runtime.includes('window.history.replaceState')) throw new Error('Short public URL restoration is missing.');
 
           const hubScripts = readdirSync('dist/assets')
             .filter((name) => name.endsWith('.js'))
             .map((name) => readFileSync(join('dist/assets', name), 'utf8'))
             .join('\n');
-          if (!hubScripts.includes('/resin/index.html?slug=')) throw new Error('Short root Resin route dispatcher is missing.');
-          if (!hubScripts.includes('static-original-20260728')) throw new Error('Root Resin route is missing the static build cache ID.');
+          if (!hubScripts.includes('/resin/index.html?')) throw new Error('Short root Resin route handoff is missing.');
+          if (!hubScripts.includes('window.location.replace')) throw new Error('Resin does not run as the top-level document.');
+          if (!hubScripts.includes('static-original-top-level-20260728')) throw new Error('Top-level Resin build ID is missing.');
+          if (hubScripts.includes('<iframe')) throw new Error('Legacy iframe Resin rendering is still present.');
 
-          console.log('Validated dealership behavior, exact original static Resin template, JSON personalization and noindex.');
+          console.log('Validated dealership behavior, exact top-level Resin hero animation, JSON personalization and noindex.');
           NODE

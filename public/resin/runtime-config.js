@@ -6,11 +6,26 @@
   const FALLBACK_EMAIL = 'hello@stoneflowresin.co.uk';
 
   const text = (value) => typeof value === 'string' ? value.trim() : '';
-  const slug = new URLSearchParams(window.location.search).get('slug')
-    || window.parent?.location?.pathname?.split('/').filter(Boolean)[0]
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get('slug')
+    || window.location.pathname.split('/').filter(Boolean)[0]
     || '';
 
   if (!slug) return;
+
+  const requestedRoute = text(params.get('route'));
+  const safeRoute = /^\/[a-z0-9][a-z0-9-]*\/?$/i.test(requestedRoute)
+    ? requestedRoute
+    : `/${slug}/`;
+  const publicRoute = safeRoute.endsWith('/') ? safeRoute : `${safeRoute}/`;
+
+  if (window.top === window.self) {
+    try {
+      window.history.replaceState({ platrikResinPreview: true }, '', publicRoute);
+    } catch {
+      // The preview still works even if a browser blocks the cosmetic URL replacement.
+    }
+  }
 
   const rawUrl = `https://raw.githubusercontent.com/platrik-previews/dealer-preview-data/main/leads/${encodeURIComponent(slug)}.json`;
 
