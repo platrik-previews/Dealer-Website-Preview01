@@ -79,90 +79,6 @@ jobs:
           if count != 1:
               raise RuntimeError('Could not update the Resin build ID in src/main.jsx.')
           main_path.write_text(main)
-
-          validation = r'''name: Validate Preview Hub
-
-          on:
-            pull_request:
-              branches: [main]
-            push:
-              branches: [main]
-
-          permissions:
-            contents: read
-
-          jobs:
-            build:
-              runs-on: ubuntu-latest
-              timeout-minutes: 15
-              steps:
-                - name: Check out source
-                  uses: actions/checkout@v4
-
-                - name: Set up Node.js
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-
-                - name: Install dependencies
-                  run: npm install --no-audit --no-fund
-
-                - name: Build Preview Hub
-                  run: npm run build
-
-                - name: Validate dealership and React 3D Resin renderers
-                  run: |
-                    node --input-type=module <<'NODE'
-                    import { existsSync, readFileSync, readdirSync } from 'node:fs';
-                    import { join } from 'node:path';
-
-                    const required = [
-                      'dist/index.html',
-                      'dist/resin/index.html',
-                      'dist/resin/assets/App-DFtM7B0N.js',
-                      'dist/resin/assets/index-DaTgjokv.js',
-                      'dist/resin/assets/index-B01mJXAv.css',
-                      'dist/resin/assets/favicon-09JzxaOU.svg',
-                    ];
-                    for (const path of required) {
-                      if (!existsSync(path)) throw new Error(`Required Preview Hub file is missing: ${path}`);
-                    }
-
-                    const resinHtml = readFileSync('dist/resin/index.html', 'utf8');
-                    const resinScripts = readdirSync('dist/resin/assets')
-                      .filter((name) => name.endsWith('.js'))
-                      .map((name) => readFileSync(join('dist/resin/assets', name), 'utf8'))
-                      .join('\n');
-                    const resinCss = readFileSync('dist/resin/assets/index-B01mJXAv.css', 'utf8');
-
-                    if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('React Resin renderer is missing noindex.');
-                    if (!resinHtml.includes('react-3d-master-20260728')) throw new Error('React Resin build marker is missing.');
-                    if (!resinHtml.includes('window.history.replaceState')) throw new Error('Short public URL restoration is missing.');
-                    for (const marker of ['driveway-scene', 'A driveway should feel', 'Beautiful above', 'Lenis', 'Runtime configuration returned HTTP']) {
-                      if (!resinScripts.includes(marker)) throw new Error(`Verified React Resin marker is missing: ${marker}`);
-                    }
-                    for (const marker of ['preserve-3d', 'perspective']) {
-                      if (!resinCss.includes(marker)) throw new Error(`React Resin 3D styling is missing: ${marker}`);
-                    }
-                    if (existsSync('dist/resin/script.js') || existsSync('dist/resin/runtime-config.js') || existsSync('dist/resin/styles.css')) {
-                      throw new Error('The obsolete flat static Resin prototype is still present.');
-                    }
-                    if (resinHtml.includes('BUILT IN LAYERS')) throw new Error('The obsolete flat layer-stack prototype is still embedded.');
-
-                    const hubScripts = readdirSync('dist/assets')
-                      .filter((name) => name.endsWith('.js'))
-                      .map((name) => readFileSync(join('dist/assets', name), 'utf8'))
-                      .join('\n');
-                    if (!hubScripts.includes('/resin/index.html?')) throw new Error('Short root Resin route handoff is missing.');
-                    if (!hubScripts.includes('window.location.replace')) throw new Error('Resin does not run as the top-level document.');
-                    if (!hubScripts.includes('react-3d-master-20260728')) throw new Error('The dispatcher is missing the React 3D build ID.');
-                    if (hubScripts.includes('<iframe')) throw new Error('Legacy iframe Resin rendering is still present.');
-
-                    console.log('Validated dealership behavior, verified React 3D Resin master, runtime JSON, short URL and noindex.');
-                    NODE
-          '''
-          validation = '\n'.join(line[10:] if line.startswith('          ') else line for line in validation.splitlines()) + '\n'
-          Path('.github/workflows/validate-preview-hub.yml').write_text(validation)
           PY
 
           grep -q 'driveway-scene' public/resin/assets/App-DFtM7B0N.js
@@ -173,11 +89,11 @@ jobs:
           test ! -e public/resin/runtime-config.js
           test ! -e public/resin/styles.css
 
-      - name: Remove temporary installer and commit
+      - name: Commit renderer files only
         run: |
-          rm .github/workflows/install-react-3d-resin.yml
           git config user.name 'platrik-preview-bot'
           git config user.email 'preview-bot@users.noreply.github.com'
-          git add public/resin src/main.jsx .github/workflows/validate-preview-hub.yml .github/workflows/install-react-3d-resin.yml
+          git add public/resin src/main.jsx
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Restore verified React 3D Resin master'
           git push origin HEAD:${{ github.head_ref }}
