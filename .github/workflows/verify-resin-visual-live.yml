@@ -1,0 +1,37 @@
+name: Verify Resin visual live
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify short Resin route and current embedded renderer
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error 'https://platrik-preview-hub.vercel.app/stoneflow-resin/' -o /tmp/resin-route.html
+          curl --fail --location --silent --show-error 'https://platrik-preview-hub.vercel.app/resin/index.html?slug=stoneflow-resin&build=current-20260728' -o /tmp/resin-shell.html
+          grep -q 'noindex, nofollow, noarchive' /tmp/resin-shell.html
+          grep -q 'index-current-20260728.js' /tmp/resin-shell.html
+          curl --fail --location --silent --show-error 'https://platrik-preview-hub.vercel.app/resin/assets/App-current-20260728.js' -o /tmp/resin-app.js
+          grep -q 'A driveway should feel' /tmp/resin-app.js
+          grep -q 'Beautiful above.' /tmp/resin-app.js
+          if grep -q 'Thoughtfully designed' /tmp/resin-app.js; then
+            echo 'Legacy Resin hero is still live.'
+            exit 1
+          fi
+      - name: Verify StoneFlow runtime JSON
+        run: |
+          curl --fail --location --silent --show-error 'https://raw.githubusercontent.com/platrik-previews/dealer-preview-data/main/leads/stoneflow-resin.json' -o /tmp/stoneflow.json
+          node -e "const d=require('/tmp/stoneflow.json');if(d.companyName!=='StoneFlow Resin'||d.renderer!=='resin_driveway'||d.allowIndexing!==false)process.exit(1)"
+      - name: Verify dealership regression
+        run: |
+          code="$(curl --location --silent --output /tmp/dealer.html --write-out '%{http_code}' 'https://platrik-preview-hub.vercel.app/broad-town-cars/')"
+          test "$code" = '200'
+          grep -q 'id="root"' /tmp/dealer.html
