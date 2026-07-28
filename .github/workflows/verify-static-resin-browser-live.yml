@@ -1,0 +1,88 @@
+name: Verify static Resin browser live
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Verify visible Resin page and dealership regression
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=static-original-20260728', {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            });
+
+            const resinFrame = page.frames().find((frame) => frame.url().includes('/resin/index.html'));
+            if (!resinFrame) throw new Error('The Resin iframe did not mount.');
+
+            await resinFrame.waitForSelector('.hero-opening h1', { state: 'visible', timeout: 30000 });
+            await resinFrame.waitForFunction(() => document.documentElement.dataset.runtimePersonalized === 'true', null, { timeout: 30000 });
+
+            const result = await resinFrame.evaluate(() => {
+              const hero = document.querySelector('.hero-opening h1');
+              const brand = document.querySelector('.brand-copy strong');
+              const phone = [...document.querySelectorAll('a[href^="tel:"]')].map((node) => node.textContent.trim()).filter(Boolean);
+              const style = hero ? getComputedStyle(hero) : null;
+              return {
+                hero: hero?.textContent?.replace(/\s+/g, ' ').trim() || '',
+                brand: brand?.textContent?.trim() || '',
+                phone,
+                display: style?.display || '',
+                visibility: style?.visibility || '',
+                opacity: style?.opacity || '',
+                bodyHeight: document.body.scrollHeight,
+                viewportHeight: window.innerHeight,
+                personalized: document.documentElement.dataset.runtimePersonalized,
+              };
+            });
+
+            if (!result.hero.includes('A better first impression')) throw new Error(`Original hero is not visible: ${result.hero}`);
+            if (!result.brand.includes('StoneFlow')) throw new Error(`StoneFlow JSON was not applied: ${result.brand}`);
+            if (!result.phone.some((value) => value.includes('01234 567 890'))) throw new Error('StoneFlow phone was not rendered.');
+            if (result.display === 'none' || result.visibility === 'hidden' || result.opacity === '0') throw new Error('The Resin hero is hidden.');
+            if (result.bodyHeight <= result.viewportHeight) throw new Error('The Resin site is not scrollable.');
+            if (result.personalized !== 'true') throw new Error('Runtime JSON personalization did not complete.');
+
+            await page.screenshot({ path: 'stoneflow-resin-live.png', fullPage: false });
+
+            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=static-original-20260728', {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            });
+            if (!dealership || dealership.status() !== 200) throw new Error('Broad Town Cars route failed.');
+            const dealershipText = await page.locator('body').innerText();
+            if (!dealershipText.includes('Broad Town Cars')) throw new Error('Broad Town Cars content is missing.');
+
+            console.log(JSON.stringify(result));
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Upload browser screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: stoneflow-resin-live-browser
+          path: stoneflow-resin-live.png
+          retention-days: 1
