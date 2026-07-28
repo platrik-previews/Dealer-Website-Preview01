@@ -17,7 +17,7 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Capture live React page and diagnostics
+      - name: Record and verify the live 3D sequence
         run: |
           node <<'NODE'
           const { chromium } = require('playwright');
@@ -33,35 +33,92 @@ jobs:
             });
             const page = await context.newPage();
             const pageErrors = [];
-            const consoleMessages = [];
-            const responses = [];
+            const consoleErrors = [];
             page.on('pageerror', (error) => pageErrors.push(error.message));
-            page.on('console', (msg) => consoleMessages.push(`${msg.type()}: ${msg.text()}`));
-            page.on('response', (response) => {
-              if (response.status() >= 400 || response.url().includes('/resin/') || response.url().includes('dealer-preview-data')) {
-                responses.push({ status: response.status(), url: response.url() });
-              }
-            });
+            page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
-            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=react-3d-bootstrap', {
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=react-3d-final', {
               waitUntil: 'domcontentloaded',
               timeout: 60000,
             });
-            await page.waitForTimeout(8000);
-            await page.screenshot({ path: 'evidence/bootstrap.png' });
+            await page.waitForSelector('.driveway-scene', { state: 'visible', timeout: 30000 });
+            await page.waitForTimeout(1800);
 
-            const bootstrap = await page.evaluate(() => ({
-              url: location.href,
-              title: document.title,
-              frames: window.frames.length,
-              bodyText: document.body.innerText.slice(0, 1500),
-              bodyHtml: document.body.innerHTML.slice(0, 4000),
-              hasScene: Boolean(document.querySelector('.driveway-scene')),
-              hasRoot: Boolean(document.getElementById('root')),
-              scripts: [...document.scripts].map((script) => script.src || '[inline]'),
-              styles: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
-            }));
-            fs.writeFileSync('evidence/bootstrap-report.json', JSON.stringify({ bootstrap, pageErrors, consoleMessages, responses }, null, 2));
+            const capture = async () => page.evaluate(() => {
+              const scene = document.querySelector('.driveway-scene');
+              const transformed = [...scene.querySelectorAll('*')]
+                .map((element) => {
+                  const style = getComputedStyle(element);
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    className: typeof element.className === 'string' ? element.className : '',
+                    transform: style.transform,
+                    transformStyle: style.transformStyle,
+                    opacity: style.opacity,
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height),
+                  };
+                })
+                .filter((item) => item.transform !== 'none' || item.transformStyle === 'preserve-3d')
+                .slice(0, 40);
+              const perspectiveNodes = [...document.querySelectorAll('*')].filter((element) => {
+                const style = getComputedStyle(element);
+                return style.transformStyle === 'preserve-3d' || (style.perspective && style.perspective !== 'none');
+              });
+              return {
+                url: location.href,
+                title: document.title,
+                scrollY: Math.round(window.scrollY),
+                bodyHeight: document.body.scrollHeight,
+                heroText: document.querySelector('.hero')?.innerText?.slice(0, 700) || document.body.innerText.slice(0, 700),
+                sceneBox: (() => {
+                  const rect = scene.getBoundingClientRect();
+                  return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+                })(),
+                perspectiveCount: perspectiveNodes.length,
+                transformed,
+              };
+            });
+
+            if (await page.locator('iframe').count()) throw new Error('A legacy iframe is still present.');
+            if (!page.url().endsWith('/stoneflow-resin/')) throw new Error(`Short URL was not preserved: ${page.url()}`);
+
+            const start = await capture();
+            await page.screenshot({ path: 'evidence/hero-start.png' });
+
+            await page.mouse.move(1060, 470);
+            for (let i = 0; i < 5; i += 1) {
+              await page.mouse.wheel(0, 620);
+              await page.waitForTimeout(480);
+            }
+            const middle = await capture();
+            await page.screenshot({ path: 'evidence/hero-middle.png' });
+
+            for (let i = 0; i < 6; i += 1) {
+              await page.mouse.wheel(0, 620);
+              await page.waitForTimeout(480);
+            }
+            const end = await capture();
+            await page.screenshot({ path: 'evidence/hero-end.png' });
+
+            const startTransforms = JSON.stringify(start.transformed);
+            const middleTransforms = JSON.stringify(middle.transformed);
+            const endTransforms = JSON.stringify(end.transformed);
+            const report = { start, middle, end, pageErrors, consoleErrors };
+            fs.writeFileSync('evidence/report.json', JSON.stringify(report, null, 2));
+
+            if (!start.heroText.includes('A driveway should feel')) throw new Error('The recovered React hero copy is not visible.');
+            if (start.perspectiveCount < 2) throw new Error(`The perspective-driven scene is missing: ${start.perspectiveCount}.`);
+            if (middle.scrollY <= start.scrollY || end.scrollY <= middle.scrollY) throw new Error('The scroll-driven sequence did not advance.');
+            if (startTransforms === middleTransforms || middleTransforms === endTransforms) throw new Error('The 3D driveway transforms did not change across the sequence.');
+            if (pageErrors.length) throw new Error(`JavaScript errors: ${pageErrors.join(' | ')}`);
+
+            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=react-3d-final', {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            });
+            if (!dealership || dealership.status() !== 200) throw new Error('Broad Town Cars route failed.');
+            if (!(await page.locator('body').innerText()).includes('Broad Town Cars')) throw new Error('Broad Town Cars content is missing.');
 
             await context.close();
             await browser.close();
