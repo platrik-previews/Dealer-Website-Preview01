@@ -29,11 +29,12 @@ jobs:
               viewport: { width: 1440, height: 900 },
               reducedMotion: 'no-preference',
             });
-            const errors = [];
-            page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`console:${msg.text()}`); });
-            page.on('pageerror', (error) => errors.push(`pageerror:${error.message}`));
+            const consoleErrors = [];
+            const pageErrors = [];
+            page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+            page.on('pageerror', (error) => pageErrors.push(error.message));
 
-            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=top-level-hero', {
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=top-level-hero-2', {
               waitUntil: 'domcontentloaded',
               timeout: 60000,
             });
@@ -86,6 +87,10 @@ jobs:
             const end = await state();
             await page.screenshot({ path: 'hero-end.png' });
 
+            const report = { start, middle, end, consoleErrors, pageErrors };
+            fs.writeFileSync('hero-live-report.json', JSON.stringify(report, null, 2));
+            console.log(JSON.stringify(report));
+
             if (start.progress > 0.05 || start.intro < 0.9) throw new Error(`Opening state is incorrect: ${JSON.stringify(start)}`);
             if (middle.progress < 0.35 || middle.explode <= 0.3 || middle.build <= 0.05 || middle.scene?.opacity <= 0.15) {
               throw new Error(`Layer-build animation did not advance: ${JSON.stringify(middle)}`);
@@ -94,18 +99,15 @@ jobs:
               throw new Error(`Hero final sequence did not advance: ${JSON.stringify(end)}`);
             }
             if (start.brand !== 'StoneFlow' || start.personalized !== 'true') throw new Error('Runtime JSON personalization failed.');
-            if (errors.length) throw new Error(`Browser errors: ${errors.join(' | ')}`);
+            if (pageErrors.length) throw new Error(`JavaScript errors: ${pageErrors.join(' | ')}`);
 
-            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=top-level-hero', {
+            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=top-level-hero-2', {
               waitUntil: 'networkidle',
               timeout: 60000,
             });
             if (!dealership || dealership.status() !== 200) throw new Error('Broad Town Cars regression check failed.');
             if (!(await page.locator('body').innerText()).includes('Broad Town Cars')) throw new Error('Broad Town Cars content is missing.');
 
-            const report = { start, middle, end, errors };
-            fs.writeFileSync('hero-live-report.json', JSON.stringify(report, null, 2));
-            console.log(JSON.stringify(report));
             await browser.close();
           })().catch((error) => {
             console.error(error);
