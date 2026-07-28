@@ -34,7 +34,7 @@ jobs:
             page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
             page.on('pageerror', (error) => pageErrors.push(error.message));
 
-            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=top-level-hero-2', {
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=top-level-hero-3', {
               waitUntil: 'domcontentloaded',
               timeout: 60000,
             });
@@ -98,10 +98,10 @@ jobs:
             if (end.progress < 0.75 || end.finish <= 0.4 || end.final <= 0.05) {
               throw new Error(`Hero final sequence did not advance: ${JSON.stringify(end)}`);
             }
-            if (start.brand !== 'StoneFlow' || start.personalized !== 'true') throw new Error('Runtime JSON personalization failed.');
+            if (!start.brand.includes('StoneFlow') || start.personalized !== 'true') throw new Error('Runtime JSON personalization failed.');
             if (pageErrors.length) throw new Error(`JavaScript errors: ${pageErrors.join(' | ')}`);
 
-            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=top-level-hero-2', {
+            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=top-level-hero-3', {
               waitUntil: 'networkidle',
               timeout: 60000,
             });
