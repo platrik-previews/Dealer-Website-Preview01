@@ -28,7 +28,7 @@ jobs:
       - name: Build Preview Hub
         run: npm run build
 
-      - name: Validate dealership and React 3D Resin renderers
+      - name: Validate renderers and engagement tracking
         run: |
           node --input-type=module <<'NODE'
           import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -36,6 +36,7 @@ jobs:
 
           const required = [
             'dist/index.html',
+            'dist/preview-tracking.js',
             'dist/resin/index.html',
             'dist/resin/assets/App-DFtM7B0N.js',
             'dist/resin/assets/index-DaTgjokv.js',
@@ -46,12 +47,25 @@ jobs:
             if (!existsSync(path)) throw new Error(`Required Preview Hub file is missing: ${path}`);
           }
 
+          const dealershipHtml = readFileSync('dist/index.html', 'utf8');
           const resinHtml = readFileSync('dist/resin/index.html', 'utf8');
+          const tracking = readFileSync('dist/preview-tracking.js', 'utf8');
           const resinScripts = readdirSync('dist/resin/assets')
             .filter((name) => name.endsWith('.js'))
             .map((name) => readFileSync(join('dist/resin/assets', name), 'utf8'))
             .join('\n');
           const resinCss = readFileSync('dist/resin/assets/index-B01mJXAv.css', 'utf8');
+          const sourceDispatcher = readFileSync('src/main.jsx', 'utf8');
+
+          if (!dealershipHtml.includes('/preview-tracking.js')) throw new Error('Dealership engagement tracking is missing.');
+          if (!resinHtml.includes('/preview-tracking.js')) throw new Error('Resin engagement tracking is missing.');
+          for (const marker of ["send('engaged')", "send('visited')", '8000', "credentials: 'omit'", 'keepalive: true']) {
+            if (!tracking.includes(marker)) throw new Error(`Preview engagement marker is missing: ${marker}`);
+          }
+          for (const forbidden of ['document.cookie', 'localStorage', 'fingerprint']) {
+            if (tracking.includes(forbidden)) throw new Error(`Privacy-forbidden tracker behavior is present: ${forbidden}`);
+          }
+          if (!sourceDispatcher.includes("params.set('pt', engagementToken)")) throw new Error('Resin handoff does not preserve the opaque engagement token.');
 
           if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('React Resin renderer is missing noindex.');
           if (!resinHtml.includes('react-3d-master-20260728')) throw new Error('React Resin build marker is missing.');
@@ -76,5 +90,5 @@ jobs:
           if (!hubScripts.includes('react-3d-master-20260728')) throw new Error('The dispatcher is missing the React 3D build ID.');
           if (hubScripts.includes('<iframe')) throw new Error('Legacy iframe Resin rendering is still present.');
 
-          console.log('Validated dealership behavior, recovered React 3D Resin master, React binding, runtime JSON, short URL and noindex.');
+          console.log('Validated dealership and Resin renderers, 3D hero, opaque engagement tracking, privacy safeguards and noindex.');
           NODE

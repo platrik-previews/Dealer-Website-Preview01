@@ -77,6 +77,10 @@ function renderResinPreview(slug) {
     route: publicRoute,
     build: RESIN_BUILD_ID,
   });
+  const engagementToken = new URLSearchParams(window.location.search).get('pt');
+  if (/^[A-Za-z0-9_-]{30,200}$/.test(engagementToken || '')) {
+    params.set('pt', engagementToken);
+  }
   window.location.replace(`/resin/index.html?${params.toString()}`);
 }
 
