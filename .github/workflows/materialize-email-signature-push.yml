@@ -23,12 +23,12 @@ jobs:
       - name: Commit signature asset
         shell: bash
         run: |
-          if git diff --quiet -- public/assets/uzair-email-signature.png; then
+          git add public/assets/uzair-email-signature.png
+          if git diff --cached --quiet; then
             echo "Signature asset already materialized."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/assets/uzair-email-signature.png
           git commit -m "Add exact Uzair email signature asset"
           git push origin HEAD:email-signature-asset
