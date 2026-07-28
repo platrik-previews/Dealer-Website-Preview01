@@ -1,0 +1,138 @@
+name: Diagnose Resin hero parity
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Compare Cloudflare and Preview Hub hero motion
+        run: |
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const fs = require('node:fs');
+
+          const positions = [0, 0.15, 0.32, 0.52, 0.72, 0.9];
+
+          async function heroSnapshot(frame, ratio) {
+            return frame.evaluate(async (ratio) => {
+              const hero = document.querySelector('[data-hero]');
+              if (!hero) throw new Error('Hero element missing');
+              const scrollable = Math.max(1, hero.offsetHeight - window.innerHeight);
+              window.scrollTo(0, Math.round(scrollable * ratio));
+              await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+              const scene = document.querySelector('.hero-scene');
+              const opening = document.querySelector('.hero-opening');
+              const rig = document.querySelector('.driveway-rig');
+              const final = document.querySelector('.hero-final');
+              const rootStyle = getComputedStyle(hero);
+              const styleOf = (node) => node ? getComputedStyle(node) : null;
+              return {
+                ratio,
+                scrollY: window.scrollY,
+                heroHeight: hero.offsetHeight,
+                viewportHeight: window.innerHeight,
+                progress: rootStyle.getPropertyValue('--hero-progress').trim(),
+                intro: rootStyle.getPropertyValue('--hero-intro').trim(),
+                explode: rootStyle.getPropertyValue('--hero-explode').trim(),
+                build: rootStyle.getPropertyValue('--hero-build').trim(),
+                finish: rootStyle.getPropertyValue('--hero-finish').trim(),
+                final: rootStyle.getPropertyValue('--hero-final').trim(),
+                openingOpacity: styleOf(opening)?.opacity,
+                sceneOpacity: styleOf(scene)?.opacity,
+                sceneTransform: styleOf(scene)?.transform,
+                rigTransform: styleOf(rig)?.transform,
+                finalOpacity: styleOf(final)?.opacity,
+                classes: hero.className,
+              };
+            }, ratio);
+          }
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({
+              viewport: { width: 1440, height: 900 },
+              reducedMotion: 'no-preference',
+            });
+
+            const cloud = await context.newPage();
+            const hub = await context.newPage();
+            const errors = { cloud: [], hub: [] };
+            cloud.on('console', (msg) => { if (msg.type() === 'error') errors.cloud.push(msg.text()); });
+            hub.on('console', (msg) => { if (msg.type() === 'error') errors.hub.push(msg.text()); });
+            cloud.on('pageerror', (err) => errors.cloud.push(err.message));
+            hub.on('pageerror', (err) => errors.hub.push(err.message));
+
+            await cloud.goto('https://resin-driveaway.pages.dev/?hero-parity=1', { waitUntil: 'networkidle', timeout: 60000 });
+            await hub.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?hero-parity=1', { waitUntil: 'networkidle', timeout: 60000 });
+
+            const cloudFrame = cloud.mainFrame();
+            const hubFrame = hub.frames().find((frame) => frame.url().includes('/resin/index.html'));
+            if (!hubFrame) throw new Error('Preview Hub Resin iframe missing');
+
+            await cloudFrame.waitForSelector('[data-hero]', { state: 'visible', timeout: 30000 });
+            await hubFrame.waitForSelector('[data-hero]', { state: 'visible', timeout: 30000 });
+
+            const cloudResults = [];
+            const hubResults = [];
+            for (const position of positions) {
+              cloudResults.push(await heroSnapshot(cloudFrame, position));
+              hubResults.push(await heroSnapshot(hubFrame, position));
+            }
+
+            // Test real mouse wheel delivery over the iframe, which is what the user experiences.
+            await hubFrame.evaluate(() => window.scrollTo(0, 0));
+            const iframe = hub.locator('iframe');
+            const box = await iframe.boundingBox();
+            if (!box) throw new Error('Resin iframe has no visible box');
+            await hub.mouse.move(box.x + box.width / 2, box.y + Math.min(450, box.height / 2));
+            await hub.mouse.wheel(0, 1300);
+            await hub.waitForTimeout(500);
+            const wheelResult = await hubFrame.evaluate(() => ({
+              scrollY: window.scrollY,
+              progress: getComputedStyle(document.querySelector('[data-hero]')).getPropertyValue('--hero-progress').trim(),
+            }));
+
+            const report = { cloudResults, hubResults, wheelResult, errors };
+            fs.writeFileSync('hero-parity-report.json', JSON.stringify(report, null, 2));
+
+            await cloudFrame.evaluate(() => window.scrollTo(0, (document.querySelector('[data-hero]').offsetHeight - innerHeight) * 0.42));
+            await hubFrame.evaluate(() => window.scrollTo(0, (document.querySelector('[data-hero]').offsetHeight - innerHeight) * 0.42));
+            await cloud.waitForTimeout(200);
+            await hub.waitForTimeout(200);
+            await cloud.screenshot({ path: 'cloudflare-hero-mid.png' });
+            await hub.screenshot({ path: 'preview-hub-hero-mid.png' });
+
+            console.log(JSON.stringify(report));
+            if (wheelResult.scrollY < 100 || Number(wheelResult.progress || 0) <= 0.01) {
+              throw new Error(`Mouse wheel did not drive iframe hero animation: ${JSON.stringify(wheelResult)}`);
+            }
+
+            await browser.close();
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Upload parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resin-hero-parity-evidence
+          path: |
+            hero-parity-report.json
+            cloudflare-hero-mid.png
+            preview-hub-hero-mid.png
+          retention-days: 1
