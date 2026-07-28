@@ -56,7 +56,7 @@ jobs:
           if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('React Resin renderer is missing noindex.');
           if (!resinHtml.includes('react-3d-master-20260728')) throw new Error('React Resin build marker is missing.');
           if (!resinHtml.includes('window.history.replaceState')) throw new Error('Short public URL restoration is missing.');
-          for (const marker of ['driveway-scene', 'A driveway should feel', 'Beautiful above', 'Lenis', 'Runtime configuration returned HTTP']) {
+          for (const marker of ['driveway-scene', 'A driveway should feel', 'Beautiful above', 'Lenis', 'Runtime configuration returned HTTP', 'const React=v;']) {
             if (!resinScripts.includes(marker)) throw new Error(`Verified React Resin marker is missing: ${marker}`);
           }
           for (const marker of ['preserve-3d', 'perspective']) {
@@ -76,5 +76,5 @@ jobs:
           if (!hubScripts.includes('react-3d-master-20260728')) throw new Error('The dispatcher is missing the React 3D build ID.');
           if (hubScripts.includes('<iframe')) throw new Error('Legacy iframe Resin rendering is still present.');
 
-          console.log('Validated dealership behavior, recovered React 3D Resin master, runtime JSON, short URL and noindex.');
+          console.log('Validated dealership behavior, recovered React 3D Resin master, React binding, runtime JSON, short URL and noindex.');
           NODE
