@@ -59,7 +59,7 @@ jobs:
 
           if (!dealershipHtml.includes('/preview-tracking.js')) throw new Error('Dealership engagement tracking is missing.');
           if (!resinHtml.includes('/preview-tracking.js')) throw new Error('Resin engagement tracking is missing.');
-          for (const marker of ['event: \'engaged\'', "send('visited')", '8000', 'credentials: \'omit\'', 'keepalive: true']) {
+          for (const marker of ["send('engaged')", "send('visited')", '8000', "credentials: 'omit'", 'keepalive: true']) {
             if (!tracking.includes(marker)) throw new Error(`Preview engagement marker is missing: ${marker}`);
           }
           for (const forbidden of ['document.cookie', 'localStorage', 'fingerprint']) {
