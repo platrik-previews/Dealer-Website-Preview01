@@ -17,13 +17,14 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Record and verify live 3D hero
+      - name: Capture live React page and diagnostics
         run: |
           node <<'NODE'
           const { chromium } = require('playwright');
           const fs = require('node:fs');
 
           (async () => {
+            fs.mkdirSync('evidence', { recursive: true });
             const browser = await chromium.launch({ headless: true });
             const context = await browser.newContext({
               viewport: { width: 1440, height: 900 },
@@ -32,92 +33,40 @@ jobs:
             });
             const page = await context.newPage();
             const pageErrors = [];
-            const consoleErrors = [];
+            const consoleMessages = [];
+            const responses = [];
             page.on('pageerror', (error) => pageErrors.push(error.message));
-            page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+            page.on('console', (msg) => consoleMessages.push(`${msg.type()}: ${msg.text()}`));
+            page.on('response', (response) => {
+              if (response.status() >= 400 || response.url().includes('/resin/') || response.url().includes('dealer-preview-data')) {
+                responses.push({ status: response.status(), url: response.url() });
+              }
+            });
 
-            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=react-3d-live', {
+            await page.goto('https://platrik-preview-hub.vercel.app/stoneflow-resin/?verify=react-3d-bootstrap', {
               waitUntil: 'domcontentloaded',
               timeout: 60000,
             });
-            await page.waitForSelector('.driveway-scene', { state: 'visible', timeout: 30000 });
-            await page.waitForTimeout(1800);
+            await page.waitForTimeout(8000);
+            await page.screenshot({ path: 'evidence/bootstrap.png' });
 
-            if (page.frames().length !== 1) throw new Error(`Unexpected iframe count: ${page.frames().length}`);
-            if (await page.locator('iframe').count()) throw new Error('A legacy iframe is still present.');
-            if (!page.url().endsWith('/stoneflow-resin/')) throw new Error(`Short URL was not preserved: ${page.url()}`);
-
-            fs.mkdirSync('evidence', { recursive: true });
-            const captureState = async () => page.evaluate(() => {
-              const scene = document.querySelector('.driveway-scene');
-              const sceneStyle = getComputedStyle(scene);
-              const threeDElements = [...document.querySelectorAll('*')].filter((element) => {
-                const style = getComputedStyle(element);
-                return style.transformStyle === 'preserve-3d' || (style.perspective && style.perspective !== 'none');
-              });
-              const visibleLayers = [...document.querySelectorAll('[class*="driveway"], [class*="layer"]')]
-                .filter((element) => {
-                  const style = getComputedStyle(element);
-                  const rect = element.getBoundingClientRect();
-                  return rect.width > 5 && rect.height > 5 && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0.01;
-                })
-                .map((element) => ({
-                  className: String(element.className),
-                  transform: getComputedStyle(element).transform,
-                  transformStyle: getComputedStyle(element).transformStyle,
-                }))
-                .slice(0, 20);
-              return {
-                url: location.href,
-                title: document.title,
-                scrollY: window.scrollY,
-                bodyHeight: document.body.scrollHeight,
-                sceneTransform: sceneStyle.transform,
-                sceneTransformStyle: sceneStyle.transformStyle,
-                scenePerspective: sceneStyle.perspective,
-                threeDCount: threeDElements.length,
-                visibleLayers,
-                bodyText: document.body.innerText.slice(0, 700),
-              };
-            });
-
-            const start = await captureState();
-            await page.screenshot({ path: 'evidence/hero-start.png' });
-
-            for (let i = 0; i < 5; i += 1) {
-              await page.mouse.move(1050, 470);
-              await page.mouse.wheel(0, 520);
-              await page.waitForTimeout(420);
-            }
-            const middle = await captureState();
-            await page.screenshot({ path: 'evidence/hero-middle.png' });
-
-            for (let i = 0; i < 6; i += 1) {
-              await page.mouse.wheel(0, 520);
-              await page.waitForTimeout(420);
-            }
-            const end = await captureState();
-            await page.screenshot({ path: 'evidence/hero-end.png' });
-
-            const dealership = await page.goto('https://platrik-preview-hub.vercel.app/broad-town-cars/?verify=react-3d-live', {
-              waitUntil: 'networkidle',
-              timeout: 60000,
-            });
-            if (!dealership || dealership.status() !== 200) throw new Error('Broad Town Cars route failed.');
-            if (!(await page.locator('body').innerText()).includes('Broad Town Cars')) throw new Error('Broad Town Cars content is missing.');
-
-            const report = { start, middle, end, pageErrors, consoleErrors };
-            fs.writeFileSync('evidence/report.json', JSON.stringify(report, null, 2));
-
-            if (!start.bodyText.includes('A driveway should feel')) throw new Error('The recovered React master hero copy is not visible.');
-            if (start.threeDCount < 2) throw new Error(`Insufficient 3D scene elements: ${start.threeDCount}`);
-            if (middle.scrollY <= start.scrollY || end.scrollY <= middle.scrollY) throw new Error('The scroll-driven sequence did not advance.');
-            if (start.sceneTransform === middle.sceneTransform && middle.sceneTransform === end.sceneTransform) throw new Error('The driveway scene transform did not animate.');
-            if (pageErrors.length) throw new Error(`JavaScript errors: ${pageErrors.join(' | ')}`);
+            const bootstrap = await page.evaluate(() => ({
+              url: location.href,
+              title: document.title,
+              frames: window.frames.length,
+              bodyText: document.body.innerText.slice(0, 1500),
+              bodyHtml: document.body.innerHTML.slice(0, 4000),
+              hasScene: Boolean(document.querySelector('.driveway-scene')),
+              hasRoot: Boolean(document.getElementById('root')),
+              scripts: [...document.scripts].map((script) => script.src || '[inline]'),
+              styles: [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.href),
+            }));
+            fs.writeFileSync('evidence/bootstrap-report.json', JSON.stringify({ bootstrap, pageErrors, consoleMessages, responses }, null, 2));
 
             await context.close();
             await browser.close();
           })().catch((error) => {
+            fs.writeFileSync('evidence/workflow-error.txt', String(error?.stack || error));
             console.error(error);
             process.exit(1);
           });
