@@ -18,7 +18,7 @@ style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, c
 document.head.appendChild(style);
 
 const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin']);
-const RESIN_BUILD_ID = 'current-20260728';
+const RESIN_BUILD_ID = 'static-original-20260728';
 
 function getPreviewRoute(pathname) {
   const firstSegment = pathname.split('/').filter(Boolean)[0] || '';
