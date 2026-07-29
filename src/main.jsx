@@ -17,8 +17,9 @@ style.dataset.dealerMotionStyles = 'true';
 style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, css08, css09, css10].join('\n');
 document.head.appendChild(style);
 
-const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin']);
+const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin', 'flooring']);
 const RESIN_BUILD_ID = 'react-3d-master-20260728';
+const FLOORING_BUILD_ID = 'aco-flooring-20260729';
 
 function getPreviewRoute(pathname) {
   const firstSegment = pathname.split('/').filter(Boolean)[0] || '';
@@ -70,18 +71,22 @@ async function loadPreviewConfig() {
   return { slug, lead };
 }
 
-function renderResinPreview(slug) {
+function buildRendererParams(slug, buildId) {
   const publicRoute = `/${encodeURIComponent(slug)}/`;
-  const params = new URLSearchParams({
-    slug,
-    route: publicRoute,
-    build: RESIN_BUILD_ID,
-  });
+  const params = new URLSearchParams({ slug, route: publicRoute, build: buildId });
   const engagementToken = new URLSearchParams(window.location.search).get('pt');
   if (/^[A-Za-z0-9_-]{30,200}$/.test(engagementToken || '')) {
     params.set('pt', engagementToken);
   }
-  window.location.replace(`/resin/index.html?${params.toString()}`);
+  return params;
+}
+
+function renderResinPreview(slug) {
+  window.location.replace(`/resin/index.html?${buildRendererParams(slug, RESIN_BUILD_ID).toString()}`);
+}
+
+function renderFlooringPreview(slug) {
+  window.location.replace(`/flooring/index.html?${buildRendererParams(slug, FLOORING_BUILD_ID).toString()}`);
 }
 
 async function bootstrap() {
@@ -91,6 +96,10 @@ async function bootstrap() {
     slug = loaded.slug;
     if (loaded.lead?.renderer === 'resin_driveway') {
       renderResinPreview(loaded.slug);
+      return;
+    }
+    if (loaded.lead?.renderer === 'flooring') {
+      renderFlooringPreview(loaded.slug);
       return;
     }
 
