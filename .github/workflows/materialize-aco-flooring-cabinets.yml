@@ -1,0 +1,52 @@
+name: Materialize ACo Flooring Cabinets preview
+
+on:
+  push:
+    branches: [deploy-aco-flooring-cabinets-hub]
+    paths:
+      - ".github/workflows/materialize-aco-flooring-cabinets.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out hub branch
+        uses: actions/checkout@v4
+        with:
+          ref: deploy-aco-flooring-cabinets-hub
+
+      - name: Download validated ACo artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --output /tmp/aco-dist.zip 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-c418-81fa-9d6c-504399c28dbb/raw?se=2026-07-30T09:25:02Z&sp=r&sv=2026-02-06&sr=b&scid=4a99031d-cd5a-52c0-b6d2-5542d6e67918&skoid=8cb40e9f-389f-4cf6-afaa-e5bd4c7fd98c&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-30T00:39:47Z&ske=2026-08-01T00:39:47Z&sks=b&skv=2026-02-06&sig=HFJ9wteEl0Gxhfbjb1pzcu1czfvKJLfHDboSqFNuUDk%3D'
+          echo '6b3f73a85524acbc0ebe14354cd456ed9336af4c34e25dfdb30ca584e229a8e8  /tmp/aco-dist.zip' | sha256sum --check -
+          rm -rf public/aco-flooring-cabinets
+          mkdir -p public/aco-flooring-cabinets
+          unzip -q /tmp/aco-dist.zip -d public/aco-flooring-cabinets
+
+      - name: Validate hub-ready output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f public/aco-flooring-cabinets/index.html
+          test -n "$(find public/aco-flooring-cabinets/assets -maxdepth 1 -name '*.js' -print -quit)"
+          test -n "$(find public/aco-flooring-cabinets/assets -maxdepth 1 -name '*.css' -print -quit)"
+          grep -q 'noindex, nofollow, noarchive' public/aco-flooring-cabinets/index.html
+          grep -q '/aco-flooring-cabinets/assets/' public/aco-flooring-cabinets/index.html
+          grep -q 'ACo Flooring, Cabinets, Kitchens & Baths' public/aco-flooring-cabinets/index.html
+
+      - name: Commit materialized route
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/materialize-aco-flooring-cabinets.yml
+          git config user.name 'theplatrik'
+          git config user.email 'platrik.work@gmail.com'
+          git add public/aco-flooring-cabinets .github/workflows/materialize-aco-flooring-cabinets.yml
+          git commit -m 'Add working ACo preview to shared hub'
+          git push origin HEAD:deploy-aco-flooring-cabinets-hub
