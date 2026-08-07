@@ -11,19 +11,14 @@ import css07b from './styles/part-07b.css?raw';
 import css08 from './styles/part-08.css?raw';
 import css09 from './styles/part-09.css?raw';
 import css10 from './styles/part-10.css?raw';
-import css11 from './styles/part-11.css?raw';
 
 const style = document.createElement('style');
 style.dataset.dealerMotionStyles = 'true';
-style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, css08, css09, css10, css11].join('\n');
+style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, css08, css09, css10].join('\n');
 document.head.appendChild(style);
 
-const RESERVED_ROOT_ROUTES = new Set([
-  'inventory', 'vehicle', 'dealer-login', 'login', 'dashboard',
-  'about', 'services', 'finance', 'part-exchange', 'sell-your-car', 'contact', 'faq',
-  'resin', 'flooring',
-]);
-const RESIN_BUILD_ID = 'react-3d-full-site-20260807';
+const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin', 'flooring']);
+const RESIN_BUILD_ID = 'react-3d-master-20260728';
 const FLOORING_BUILD_ID = 'aco-flooring-20260729';
 
 function getPreviewRoute(pathname) {
@@ -77,8 +72,7 @@ async function loadPreviewConfig() {
 }
 
 function buildRendererParams(slug, buildId) {
-  const routeSegments = window.location.pathname.split('/').filter(Boolean);
-  const publicRoute = `/${routeSegments.map((segment) => encodeURIComponent(segment)).join('/')}/`;
+  const publicRoute = `/${encodeURIComponent(slug)}/`;
   const params = new URLSearchParams({ slug, route: publicRoute, build: buildId });
   const engagementToken = new URLSearchParams(window.location.search).get('pt');
   if (/^[A-Za-z0-9_-]{30,200}$/.test(engagementToken || '')) {
