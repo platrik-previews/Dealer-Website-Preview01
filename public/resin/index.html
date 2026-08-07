@@ -1,34 +1,44 @@
 <!doctype html>
-<html lang="en-GB" data-platrik-resin-build="react-3d-master-20260728">
+<html lang="en-GB" data-platrik-resin-build="react-3d-full-site-20260807">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#11110f" />
+    <meta name="theme-color" content="#11110e" />
     <meta name="description" content="A personalised resin-bound driveway, path and patio website preview." />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <meta property="og:type" content="website" />
     <title>Resin Driveway Website Preview</title>
+    <script>
+      (() => {
+        const route = new URLSearchParams(window.location.search).get('route') || '';
+        if (!/^\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*\/?$/i.test(route)) return;
+        document.documentElement.dataset.resinRoute = route.split('/').filter(Boolean).length > 1 ? 'subpage' : 'home';
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="icon" href="/resin/assets/favicon-09JzxaOU.svg" type="image/svg+xml" />
     <script type="module" crossorigin src="/resin/assets/index-DaTgjokv.js"></script>
     <link rel="stylesheet" crossorigin href="/resin/assets/index-B01mJXAv.css">
+    <link rel="stylesheet" href="/resin/full-site.css?v=react-3d-full-site-20260807" />
   </head>
   <body>
     <div id="root"></div>
+    <div id="resin-full-site"></div>
+    <script defer src="/resin/full-site.js?v=react-3d-full-site-20260807"></script>
     <script defer src="/preview-tracking.js"></script>
     <script>
       (() => {
         const params = new URLSearchParams(window.location.search);
         const requestedRoute = params.get('route') || '';
-        if (!/^\/[a-z0-9][a-z0-9-]*\/?$/i.test(requestedRoute)) return;
+        if (!/^\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*\/?$/i.test(requestedRoute)) return;
         const publicRoute = requestedRoute.endsWith('/') ? requestedRoute : `${requestedRoute}/`;
         window.addEventListener('load', () => {
           try {
             window.history.replaceState({ platrikResinPreview: true }, '', publicRoute);
           } catch {
-            // The React preview remains functional if cosmetic URL replacement is blocked.
+            // The preview remains functional if cosmetic URL replacement is blocked.
           }
         }, { once: true });
       })();
