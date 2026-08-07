@@ -5,7 +5,6 @@ import { Header, Mark, SmartLink } from './Navigation';
 export { Mark, SmartLink } from './Navigation';
 
 export function Footer() {
-  const emailHref = business.contact.email ? `mailto:${business.contact.email}` : business.contact.phoneLink;
   return (
     <footer className="site-footer" id="contact">
       <div className="site-footer__lead reveal">
@@ -13,14 +12,14 @@ export function Footer() {
         <h2>{business.footer.heading}</h2>
         <div className="button-row">
           <a className="button button--primary" href={business.contact.phoneLink}>Call {business.contact.phoneDisplay}</a>
-          <a className="button button--ghost" href={emailHref}>{business.contact.email ? business.footer.emailButton : 'Make an enquiry'}</a>
+          <a className="button button--ghost" href={`mailto:${business.contact.email}`}>{business.footer.emailButton}</a>
         </div>
       </div>
       <div className="site-footer__grid">
         <div><Mark /><p>{business.footer.description}</p></div>
-        <div><strong>Visit</strong><a href={business.contact.mapsLink} target="_blank" rel="noreferrer">{business.contact.address}</a></div>
+        <div><strong>Visit</strong><a href={business.contact.mapsLink}>{business.contact.address}</a></div>
         <div><strong>Hours</strong>{business.openingHours.map(([day, hours]) => <span key={day}>{day}<small>{hours}</small></span>)}</div>
-        <div className="footer-link-stack"><strong>Explore</strong><SmartLink href="/inventory">Current stock</SmartLink><SmartLink href="/about">About us</SmartLink><SmartLink href="/services">Services</SmartLink><SmartLink href="/finance">Finance</SmartLink><SmartLink href="/part-exchange">Part exchange</SmartLink><SmartLink href="/contact">Contact</SmartLink><SmartLink href="/faq">FAQ</SmartLink><SmartLink href="/dealer-login">Dealer login</SmartLink></div>
+        <div><strong>Explore</strong><SmartLink href="/inventory">Current stock</SmartLink><SmartLink href="/dealer-login">Dealer login</SmartLink></div>
       </div>
       <div className="site-footer__bottom"><span>© {new Date().getFullYear()} {business.identity.legalName}</span><span>{business.footer.creditLine}</span></div>
     </footer>
