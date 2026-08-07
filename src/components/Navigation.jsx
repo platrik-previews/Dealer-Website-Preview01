@@ -2,6 +2,16 @@ import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { business } from '../config/business';
 import { navigate, toPublicPath, usePathname } from '../hooks/usePathname';
 
+const PRIMARY_NAVIGATION = [
+  { label: 'Home', href: '/' },
+  { label: 'Stock', href: '/inventory' },
+  { label: 'About', href: '/about' },
+  { label: 'Services', href: '/services' },
+  { label: 'Finance', href: '/finance' },
+  { label: 'Sell / PX', href: '/part-exchange' },
+  { label: 'Contact', href: '/contact' },
+];
+
 export const SmartLink = forwardRef(function SmartLink({ href, className, children, onClick, ...props }, ref) {
   const publicHref = toPublicPath(href);
   const handleClick = (event) => {
@@ -32,25 +42,23 @@ export function Mark({ compact = false }) {
 
   return (
     <div className={`brand-mark ${compact ? 'brand-mark--compact' : ''}`} aria-label={identity.displayName}>
-      <span className="brand-mark__symbol" aria-hidden="true">
-        <i /><i /><i />
-      </span>
+      <span className="brand-mark__symbol" aria-hidden="true"><i /><i /><i /></span>
       {!compact && <span><strong>{identity.logoLine1}</strong><small>{identity.logoLine2}</small></span>}
     </div>
   );
 }
 
-function getRouteActiveHref(pathname, hash) {
+function getRouteActiveHref(pathname) {
   if (pathname === '/inventory' || pathname.startsWith('/vehicle/')) return '/inventory';
-  if (pathname !== '/') return '';
-  return hash ? `/${hash}` : '/';
+  if (pathname === '/sell-your-car') return '/part-exchange';
+  return PRIMARY_NAVIGATION.some((item) => item.href === pathname) ? pathname : '';
 }
 
 export function Header() {
-  const { pathname, hash } = usePathname();
+  const { pathname } = usePathname();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [activeHref, setActiveHref] = useState(() => getRouteActiveHref(pathname, hash));
+  const [activeHref, setActiveHref] = useState(() => getRouteActiveHref(pathname));
   const [indicator, setIndicator] = useState({ x: 0, width: 0, ready: false });
   const desktopNavRef = useRef(null);
 
@@ -62,66 +70,8 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    setActiveHref(getRouteActiveHref(pathname, hash));
+    setActiveHref(getRouteActiveHref(pathname));
     setOpen(false);
-  }, [pathname, hash]);
-
-  useEffect(() => {
-    if (pathname !== '/') return undefined;
-
-    const sections = business.navigation
-      .map((item, index) => {
-        const sectionId = item.sectionId || item.href.match(/#(.+)$/)?.[1];
-        const element = sectionId ? document.getElementById(sectionId) : null;
-        return element ? { item, index, element } : null;
-      })
-      .filter(Boolean);
-
-    if (!sections.length) return undefined;
-
-    let frame = 0;
-    let previousScrollY = window.scrollY;
-    let previousDirection = 1;
-
-    const updateActiveSection = () => {
-      frame = 0;
-      const scrollY = window.scrollY;
-      const viewportHeight = Math.max(window.innerHeight, 1);
-      const delta = scrollY - previousScrollY;
-      const direction = delta === 0 ? previousDirection : delta > 0 ? 1 : -1;
-      previousScrollY = scrollY;
-      previousDirection = direction;
-
-      const visibleSections = sections
-        .map((section) => ({ ...section, rect: section.element.getBoundingClientRect() }))
-        .filter(({ rect }) => rect.top < viewportHeight && rect.bottom > 0);
-
-      if (!visibleSections.length) {
-        const firstSection = sections[0].element.getBoundingClientRect();
-        if (firstSection.top >= viewportHeight || scrollY <= 2) setActiveHref('/');
-        return;
-      }
-
-      const activeSection = direction > 0
-        ? visibleSections[visibleSections.length - 1]
-        : visibleSections[0];
-
-      setActiveHref(activeSection.item.href);
-    };
-
-    const requestUpdate = () => {
-      if (!frame) frame = window.requestAnimationFrame(updateActiveSection);
-    };
-
-    updateActiveSection();
-    window.addEventListener('scroll', requestUpdate, { passive: true });
-    window.addEventListener('resize', requestUpdate, { passive: true });
-
-    return () => {
-      window.removeEventListener('scroll', requestUpdate);
-      window.removeEventListener('resize', requestUpdate);
-      if (frame) window.cancelAnimationFrame(frame);
-    };
   }, [pathname]);
 
   useLayoutEffect(() => {
@@ -139,20 +89,15 @@ export function Header() {
 
     updateIndicator();
     window.addEventListener('resize', updateIndicator, { passive: true });
-    const fontReady = document.fonts?.ready;
-    fontReady?.then(updateIndicator).catch(() => {});
-    return () => {
-      window.removeEventListener('resize', updateIndicator);
-    };
+    document.fonts?.ready?.then(updateIndicator).catch(() => {});
+    return () => window.removeEventListener('resize', updateIndicator);
   }, [activeHref]);
 
   useEffect(() => {
     if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
+    const onKeyDown = (event) => event.key === 'Escape' && setOpen(false);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
@@ -180,7 +125,7 @@ export function Header() {
           }}
         >
           <span className="site-nav__indicator" aria-hidden="true" />
-          {business.navigation.map((item) => (
+          {PRIMARY_NAVIGATION.map((item) => (
             <SmartLink
               key={item.label}
               href={item.href}
@@ -213,7 +158,7 @@ export function Header() {
       <div id="mobile-navigation" className={`mobile-nav ${open ? 'mobile-nav--open' : ''}`} aria-hidden={!open}>
         <div className="mobile-nav__ambient" aria-hidden="true">DRIVE</div>
         <nav className="mobile-nav__links" aria-label="Mobile navigation">
-          {business.navigation.map((item, index) => (
+          {PRIMARY_NAVIGATION.map((item, index) => (
             <SmartLink
               key={item.label}
               href={item.href}
@@ -231,6 +176,7 @@ export function Header() {
         </nav>
         <div className="mobile-nav__actions">
           <a href={business.contact.phoneLink} tabIndex={open ? 0 : -1}><span>Call dealership</span><strong>{business.contact.phoneDisplay}</strong></a>
+          <SmartLink href="/faq" onClick={closeMenu} tabIndex={open ? 0 : -1}>Frequently asked questions <span aria-hidden="true">↗</span></SmartLink>
           <SmartLink href="/dealer-login" onClick={closeMenu} tabIndex={open ? 0 : -1}>Dealer login <span aria-hidden="true">↗</span></SmartLink>
         </div>
       </div>
