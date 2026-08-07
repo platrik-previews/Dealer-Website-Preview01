@@ -38,6 +38,8 @@ jobs:
             'dist/index.html',
             'dist/preview-tracking.js',
             'dist/resin/index.html',
+            'dist/resin/full-site.css',
+            'dist/resin/full-site.js',
             'dist/resin/assets/App-DFtM7B0N.js',
             'dist/resin/assets/index-DaTgjokv.js',
             'dist/resin/assets/index-B01mJXAv.css',
@@ -49,6 +51,8 @@ jobs:
 
           const dealershipHtml = readFileSync('dist/index.html', 'utf8');
           const resinHtml = readFileSync('dist/resin/index.html', 'utf8');
+          const fullSite = readFileSync('dist/resin/full-site.js', 'utf8');
+          const fullSiteCss = readFileSync('dist/resin/full-site.css', 'utf8');
           const tracking = readFileSync('dist/preview-tracking.js', 'utf8');
           const resinScripts = readdirSync('dist/resin/assets')
             .filter((name) => name.endsWith('.js'))
@@ -68,7 +72,9 @@ jobs:
           if (!sourceDispatcher.includes("params.set('pt', engagementToken)")) throw new Error('Resin handoff does not preserve the opaque engagement token.');
 
           if (!resinHtml.includes('noindex, nofollow, noarchive')) throw new Error('React Resin renderer is missing noindex.');
-          if (!resinHtml.includes('react-3d-master-20260728')) throw new Error('React Resin build marker is missing.');
+          if (!resinHtml.includes('react-3d-full-site-20260807')) throw new Error('Full Resin website build marker is missing.');
+          if (!resinHtml.includes('/resin/full-site.css')) throw new Error('Full-site stylesheet is not loaded.');
+          if (!resinHtml.includes('/resin/full-site.js')) throw new Error('Full-site runtime is not loaded.');
           if (!resinHtml.includes('window.history.replaceState')) throw new Error('Short public URL restoration is missing.');
           for (const marker of ['driveway-scene', 'A driveway should feel', 'Beautiful above', 'Lenis', 'Runtime configuration returned HTTP', 'const React=v;']) {
             if (!resinScripts.includes(marker)) throw new Error(`Verified React Resin marker is missing: ${marker}`);
@@ -76,6 +82,14 @@ jobs:
           for (const marker of ['preserve-3d', 'perspective']) {
             if (!resinCss.includes(marker)) throw new Error(`React Resin 3D styling is missing: ${marker}`);
           }
+          for (const marker of ["'services'", "'projects'", "'process'", "'finishes'", "'about'", "'areas'", "'faq'", "'contact'", 'data-fs-form', 'data-fs-swatch']) {
+            if (!fullSite.includes(marker)) throw new Error(`Full-site route or interaction is missing: ${marker}`);
+          }
+          for (const marker of ['.fs-header', '.fs-project-grid', '.fs-contact-grid', '@media (max-width: 760px)']) {
+            if (!fullSiteCss.includes(marker)) throw new Error(`Responsive full-site styling is missing: ${marker}`);
+          }
+          if (!sourceDispatcher.includes("const RESIN_BUILD_ID = 'react-3d-full-site-20260807'")) throw new Error('Dispatcher build ID is stale.');
+          if (!sourceDispatcher.includes("window.location.pathname.split('/').filter(Boolean)")) throw new Error('Nested public Resin routes are not preserved.');
           if (existsSync('dist/resin/script.js') || existsSync('dist/resin/runtime-config.js') || existsSync('dist/resin/styles.css')) {
             throw new Error('The obsolete flat static Resin prototype is still present.');
           }
@@ -87,8 +101,8 @@ jobs:
             .join('\n');
           if (!hubScripts.includes('/resin/index.html?')) throw new Error('Short root Resin route handoff is missing.');
           if (!hubScripts.includes('window.location.replace')) throw new Error('Resin does not run as the top-level document.');
-          if (!hubScripts.includes('react-3d-master-20260728')) throw new Error('The dispatcher is missing the React 3D build ID.');
+          if (!hubScripts.includes('react-3d-full-site-20260807')) throw new Error('The dispatcher is missing the full-site Resin build ID.');
           if (hubScripts.includes('<iframe')) throw new Error('Legacy iframe Resin rendering is still present.');
 
-          console.log('Validated dealership and Resin renderers, 3D hero, opaque engagement tracking, privacy safeguards and noindex.');
+          console.log('Validated dealership renderer, preserved Resin 3D homepage, responsive full-site routes, engagement tracking, privacy safeguards and noindex.');
           NODE
