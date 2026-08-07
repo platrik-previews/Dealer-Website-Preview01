@@ -12,7 +12,9 @@
       (() => {
         const route = new URLSearchParams(window.location.search).get('route') || '';
         if (!/^\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*\/?$/i.test(route)) return;
-        document.documentElement.dataset.resinRoute = route.split('/').filter(Boolean).length > 1 ? 'subpage' : 'home';
+        const segments = route.split('/').filter(Boolean);
+        const fullSitePages = new Set(['services', 'projects', 'process', 'finishes', 'about', 'areas', 'faq', 'contact']);
+        document.documentElement.dataset.resinRoute = segments.length > 1 && fullSitePages.has((segments[1] || '').toLowerCase()) ? 'subpage' : 'home';
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -27,6 +29,7 @@
     <div id="root"></div>
     <div id="resin-full-site"></div>
     <script defer src="/resin/full-site.js?v=react-3d-full-site-20260807"></script>
+    <script defer src="/resin/full-site-fixes.js?v=react-3d-full-site-20260807"></script>
     <script defer src="/preview-tracking.js"></script>
     <script>
       (() => {
