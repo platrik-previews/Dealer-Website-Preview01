@@ -17,12 +17,16 @@ style.dataset.dealerMotionStyles = 'true';
 style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, css08, css09, css10].join('\n');
 document.head.appendChild(style);
 
+const MASTER_ROUTE = 'master-dealership';
 const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin', 'flooring']);
 const RESIN_BUILD_ID = 'react-3d-full-site-20260807';
 const FLOORING_BUILD_ID = 'aco-flooring-20260729';
 
 function getPreviewRoute(pathname) {
   const firstSegment = pathname.split('/').filter(Boolean)[0] || '';
+  if (firstSegment === MASTER_ROUTE) {
+    return { slug: '', basePath: `/${MASTER_ROUTE}` };
+  }
   if (!firstSegment || RESERVED_ROOT_ROUTES.has(firstSegment)) {
     return { slug: '', basePath: '' };
   }
@@ -101,6 +105,11 @@ function renderFlooringPreview(slug) {
 }
 
 async function bootstrap() {
+  if (window.location.pathname === '/') {
+    window.location.replace(`/${MASTER_ROUTE}/`);
+    return;
+  }
+
   let slug = '';
   try {
     const loaded = await loadPreviewConfig();
