@@ -18,7 +18,7 @@ style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, c
 document.head.appendChild(style);
 
 const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin', 'flooring']);
-const RESIN_BUILD_ID = 'react-3d-master-20260728';
+const RESIN_BUILD_ID = 'react-3d-full-site-20260807-hotfix1';
 const FLOORING_BUILD_ID = 'aco-flooring-20260729';
 
 function getPreviewRoute(pathname) {
@@ -71,8 +71,20 @@ async function loadPreviewConfig() {
   return { slug, lead };
 }
 
-function buildRendererParams(slug, buildId) {
-  const publicRoute = `/${encodeURIComponent(slug)}/`;
+function normalizePublicRoute(slug, pathname, preserveNestedRoute) {
+  const fallback = `/${encodeURIComponent(slug)}/`;
+  if (!preserveNestedRoute) return fallback;
+
+  const candidate = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  const safePattern = /^\/[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*\/?$/i;
+  if (!safePattern.test(candidate)) return fallback;
+
+  const firstSegment = candidate.split('/').filter(Boolean)[0] || '';
+  return firstSegment === slug ? candidate : fallback;
+}
+
+function buildRendererParams(slug, buildId, options = {}) {
+  const publicRoute = normalizePublicRoute(slug, window.location.pathname, options.preserveNestedRoute === true);
   const params = new URLSearchParams({ slug, route: publicRoute, build: buildId });
   const engagementToken = new URLSearchParams(window.location.search).get('pt');
   if (/^[A-Za-z0-9_-]{30,200}$/.test(engagementToken || '')) {
@@ -82,7 +94,7 @@ function buildRendererParams(slug, buildId) {
 }
 
 function renderResinPreview(slug) {
-  window.location.replace(`/resin/index.html?${buildRendererParams(slug, RESIN_BUILD_ID).toString()}`);
+  window.location.replace(`/resin/index.html?${buildRendererParams(slug, RESIN_BUILD_ID, { preserveNestedRoute: true }).toString()}`);
 }
 
 function renderFlooringPreview(slug) {
