@@ -18,7 +18,7 @@ style.textContent = [css01, css02, css03, css04, css05, css06, css07a, css07b, c
 document.head.appendChild(style);
 
 const RESERVED_ROOT_ROUTES = new Set(['inventory', 'vehicle', 'dealer-login', 'dashboard', 'resin', 'flooring']);
-const RESIN_BUILD_ID = 'react-3d-master-20260728';
+const RESIN_BUILD_ID = 'react-3d-full-site-20260807';
 const FLOORING_BUILD_ID = 'aco-flooring-20260729';
 
 function getPreviewRoute(pathname) {
@@ -72,7 +72,8 @@ async function loadPreviewConfig() {
 }
 
 function buildRendererParams(slug, buildId) {
-  const publicRoute = `/${encodeURIComponent(slug)}/`;
+  const routeSegments = window.location.pathname.split('/').filter(Boolean);
+  const publicRoute = `/${routeSegments.map((segment) => encodeURIComponent(segment)).join('/')}/`;
   const params = new URLSearchParams({ slug, route: publicRoute, build: buildId });
   const engagementToken = new URLSearchParams(window.location.search).get('pt');
   if (/^[A-Za-z0-9_-]{30,200}$/.test(engagementToken || '')) {
